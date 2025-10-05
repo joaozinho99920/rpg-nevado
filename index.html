@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>RPG-Nevado</title>
+  <style>
+    body {
+      font-family: monospace, sans-serif;
+      background: linear-gradient(135deg, #0b0b1a, #1c1c3a);
+      color: #f5f5f5;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    #game, #menu { display: none; }
+    .btn {
+      background: #444;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    .btn:hover { background: #666; }
+    pre {
+      text-align: left;
+      background: #111;
+      padding: 10px;
+      max-height: 300px;
+      overflow-y: auto;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>❄️ RPG-Nevado ❄️</h1>
+  <div id="start">
+    <button class="btn" onclick="novoJogo()">Iniciar Novo Jogo</button>
+    <button class="btn" onclick="carregarJogo()">Carregar Jogo</button>
+  </div>
+
+  <div id="menu">
+    <h2 id="status"></h2>
+    <button class="btn" onclick="explorar()">Explorar</button>
+    <button class="btn" onclick="viajar()">Viajar</button>
+    <button class="btn" onclick="ferreiro()">Ferreiro</button>
+    <button class="btn" onclick="mostrarInventario()">Inventário</button>
+    <button class="btn" onclick="mostrarStatus()">Status</button>
+    <button class="btn" onclick="equiparItem()">Equipar Item</button>
+    <button class="btn" onclick="salvar()">Salvar</button>
+    <button class="btn" onclick="resgatarCodigo()">Resgatar Código</button>
+    <button class="btn" onclick="sair()">Sair</button>
+    <pre id="log"></pre>
+  </div>
+
+<script>
+class Player {
+  constructor(nome, classe, hp, mp, atk) {
+    this.nome = nome;
+    this.classe = classe;
+    this.max_hp = hp;
+    this.hp = hp;
+    this.max_mp = mp;
+    this.mp = mp;
+    this.atk = atk;
+    this.exp = 0;
+    this.lvl = 1;
+    this.gold = 0;
+    this.inventario = [];
+    this.arma = null;
+    this.armadura = null;
+    this.acessorio = null;
+    this.defesa = 0;
+    this.bioma = "Nevado";
+  }
+  addItem(item) {
+    this.inventario.push(item);
+    log(`🎁 Você recebeu: ${item.nome} (${item.raridade})`);
+  }
+  heal() {
+    if (this.mp >= 10) {
+      let cura = rand(20,50);
+      this.hp = Math.min(this.max_hp, this.hp + cura);
+      this.mp -= 10;
+      log(`🍷 ${this.nome} recuperou ${cura} HP!`);
+    } else log("⚠️ MP insuficiente!");
+  }
+  attack(enemy) {
+    let dano = rand(this.atk-2,this.atk+5);
+    dano -= enemy.defesa || 0;
+    dano = Math.max(1,dano);
+    enemy.hp -= dano;
+    log(`⚔️ ${this.nome} causou ${dano} em ${enemy.name}`);
+  }
+  ganharExp(qtd) {
+    this.exp += qtd;
+    if (this.exp >= this.lvl*100) {
+      this.lvl++;
+      this.max_hp += 20;
+      this.atk += 5;
+      this.hp = this.max_hp;
+      log(`⭐ ${this.nome} subiu para o nível ${this.lvl}!`);
+    }
+  }
+}
+
+class Enemy {
+  constructor(name,hp,atk,gold,exp,boss=false,drops=[]) {
+    this.name=name;this.hp=hp;this.atk=atk;this.gold=gold;
+    this.exp=exp;this.boss=boss;this.drops=drops;
+  }
+  attack(player){
+    let dano = rand(this.atk-3,this.atk+5);
+    dano = Math.max(1,dano - player.defesa);
+    player.hp -= dano;
+    log(`💢 ${this.name} causou ${dano} em ${player.nome}`);
+  }
+}
+
+let player=null;
+let biomas = {
+  "Nevado":[
+    new Enemy("Lobo de Gelo",60,10,40,40,false),
+    new Enemy("Yeti",100,15,80,60,false),
+    new Enemy("Dragão de Gelo",200,25,150,200,true)
+  ],
+  "Floresta":[
+    new Enemy("Slime Verde",30,5,10,20,false),
+    new Enemy("Goblin",50,8,20,30,false),
+    new Enemy("Ent",120,18,100,150,true)
+  ],
+  "Deserto":[
+    new Enemy("Escorpião",40,9,20,30,false),
+    new Enemy("Múmia",90,14,70,60,false),
+    new Enemy("Guardião de Areia",160,22,130,200,true)
+  ],
+  "Lava":[
+    new Enemy("Salamandra",50,12,25,40,false),
+    new Enemy("Demônio do Fogo",120,18,100,80,false),
+    new Enemy("Titã de Magma",250,30,200,300,true)
+  ]
+};
+
+function novoJogo(){
+  let nome = prompt("Digite o nome do seu herói:");
+  let esc = prompt("Escolha classe:\n1.Guerreiro (HP120/MP30/ATK15)\n2.Mago (HP80/MP80/ATK10)\n3.Arqueiro (HP100/MP50/ATK12)");
+  if(esc==="1") player=new Player(nome,"Guerreiro",120,30,15);
+  else if(esc==="2") player=new Player(nome,"Mago",80,80,10);
+  else if(esc==="3") player=new Player(nome,"Arqueiro",100,50,12);
+  else player=new Player(nome,"Aventureiro",100,40,10);
+
+  document.getElementById("start").style.display="none";
+  document.getElementById("menu").style.display="block";
+  atualizarStatus();
+}
+
+function carregarJogo(){
+  let data = localStorage.getItem("save");
+  if(data){
+    player = Object.assign(new Player(), JSON.parse(data));
+    document.getElementById("start").style.display="none";
+    document.getElementById("menu").style.display="block";
+    log("💾 Save carregado!");
+    atualizarStatus();
+  } else log("❌ Nenhum save encontrado!");
+}
+
+function explorar(){
+  if(Math.random()<0.3){abrirBau(player);return;}
+  let lista = biomas[player.bioma];
+  let e = lista[rand(0,lista.length-1)];
+  batalha(e);
+}
+
+function batalha(enemy){
+  log(`🔥 ${enemy.name} apareceu no bioma ${player.bioma}!`);
+  while(player.hp>0 && enemy.hp>0){
+    let acao=prompt(`${player.nome} HP:${player.hp}/${player.max_hp} | ${enemy.name} HP:${enemy.hp}\n1.Atacar 2.Curar`);
+    if(acao==="1") player.attack(enemy);
+    else if(acao==="2") player.heal();
+    if(enemy.hp>0) enemy.attack(player);
+  }
+  if(player.hp>0){
+    log(`✅ Derrotou ${enemy.name}`);
+    player.gold+=enemy.gold;
+    player.ganharExp(enemy.exp);
+  }else{
+    log("💀 Você foi derrotado...");
+    player.hp=Math.floor(player.max_hp/2);
+    log("❤️ Você reviveu com 50% de HP!");
+  }
+  atualizarStatus();
+}
+
+function abrirBau(player){
+  let raridades={"Comum":0.5,"Incomum":0.3,"Raro":0.15,"Épico":0.04,"Lendário":0.01};
+  let keys=Object.keys(raridades);
+  let rar=keys[rand(0,keys.length-1)];
+  log(`📦 Você encontrou um baú ${rar}!`);
+  let recomp={
+    "Comum":{nome:"Poção de Vida",tipo:"consumível",cura:30,raridade:"Comum"},
+    "Incomum":{nome:"Espada Curta",tipo:"arma",atk:7,raridade:"Incomum"},
+    "Raro":{nome:"Armadura de Ferro",tipo:"armadura",defesa:12,raridade:"Raro"},
+    "Épico":{nome:"Amuleto da Sabedoria",tipo:"acessório",hp_bonus:50,raridade:"Épico"},
+    "Lendário":{nome:"Excalibur",tipo:"arma",atk:50,raridade:"Lendário"}
+  };
+  player.addItem(recomp[rar]);
+}
+
+function viajar(){
+  let bioma = prompt("Escolha o bioma:\n1.Nevado\n2.Floresta\n3.Deserto\n4.Lava");
+  let nomes=["Nevado","Floresta","Deserto","Lava"];
+  if(bioma>="1" && bioma<="4"){player.bioma=nomes[parseInt(bioma)-1];log(`🗺️ Viajou para o bioma ${player.bioma}!`);}
+}
+
+function ferreiro(){
+  let esc=prompt("🔨 Ferreiro:\n1.Aumentar Ataque\n2.Aumentar Defesa\n3.Aumentar HP\n(100 Gold cada)");
+  if(player.gold<100){log("💰 Ouro insuficiente!");return;}
+  player.gold-=100;
+  if(esc==="1"){player.atk+=5;log("⚔️ Ataque aumentado!");}
+  else if(esc==="2"){player.defesa+=5;log("🛡 Defesa aumentada!");}
+  else if(esc==="3"){player.max_hp+=20;player.hp=player.max_hp;log("❤️ HP aumentado!");}
+  atualizarStatus();
+}
+
+function mostrarInventario(){
+  if(!player.inventario.length){log("📦 Inventário vazio.");return;}
+  log("🎒 Inventário:");
+  player.inventario.forEach((i,n)=>log(`${n+1}. ${i.nome} (${i.raridade}) - ${i.tipo}`));
+}
+
+function mostrarStatus(){
+  log(`📊 ${player.nome} | Classe:${player.classe} | Lvl:${player.lvl}\nHP:${player.hp}/${player.max_hp} MP:${player.mp}/${player.max_mp}\nATK:${player.atk} DEF:${player.defesa}\nGold:${player.gold} EXP:${player.exp}/${player.lvl*100}\nBioma:${player.bioma}`);
+}
+
+function equiparItem(){
+  if(!player.inventario.length){log("📦 Inventário vazio.");return;}
+  let escolha=prompt("Digite número do item:");
+  let idx=parseInt(escolha)-1;
+  if(idx>=0 && idx<player.inventario.length){
+    let item=player.inventario[idx];
+    if(item.tipo==="arma"){player.arma=item;player.atk+=item.atk;}
+    else if(item.tipo==="armadura"){player.armadura=item;player.defesa+=item.defesa;}
+    else if(item.tipo==="acessório"){player.acessorio=item;player.max_hp+=item.hp_bonus;}
+    log(`✅ Equipou ${item.nome}`);
+  }
+}
+
+function salvar(){
+  localStorage.setItem("save",JSON.stringify(player));
+  log("💾 Jogo salvo!");
+}
+
+function resgatarCodigo(){
+  let c=prompt("Digite código secreto:").toLowerCase();
+  if(c==="admcode"){player.classe="ADM";player.max_hp=999;player.max_mp=999;player.atk=999;player.hp=player.max_hp;player.mp=player.max_mp;log("👑 Classe ADM Suprema!");}
+  else if(c==="admitem"){player.addItem({nome:"Cetro Supremo ADM",tipo:"arma",atk:500,raridade:"👑Exclusivo"});}
+  else if(c==="gptcode"){player.classe="ChatGPT";player.max_hp=1e9;player.max_mp=1e9;player.atk=1e9;player.hp=player.max_hp;player.mp=player.max_mp;log("🤖 Classe ChatGPT Suprema!");}
+  else if(c==="gold1000"){player.gold+=1000;log("💰 Recebeu 1000 Gold!");}
+  else if(c==="xpboost"){player.ganharExp(500);log("⚡ Recebeu 500 EXP!");}
+  else if(c==="healpack"){player.addItem({nome:"Poção Suprema",tipo:"consumível",cura:500,raridade:"Épico"});}
+  else if(c==="legendarybox"){player.addItem({nome:"Espada do Dragão",tipo:"arma",atk:200,raridade:"Lendário"});}
+  else if(c==="tankmode"){player.max_hp+=1000;player.hp=player.max_hp;player.defesa+=100;log("🛡 Tank Mode ativado!");}
+  else if(c==="archangel"){player.addItem({nome:"Asas do Arcanjo",tipo:"acessório",hp_bonus:500,raridade:"Épico"});}
+  else if(c==="shadow"){player.addItem({nome:"Armadura das Sombras",tipo:"armadura",defesa:150,raridade:"Lendário"});}
+  else log("❌ Código inválido!");
+}
+
+function sair(){log("👋 Até a próxima!");location.reload();}
+function atualizarStatus(){document.getElementById("status").innerText=`${player.nome} (Lvl ${player.lvl}) | HP:${player.hp}/${player.max_hp} | Gold:${player.gold} | 🌍 ${player.bioma}`;}
+function log(txt){let logBox=document.getElementById("log");logBox.innerText+=txt+"\n";logBox.scrollTop=logBox.scrollHeight;}
+function rand(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
+</script>
+</body>
+</html>
